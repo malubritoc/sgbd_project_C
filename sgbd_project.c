@@ -30,13 +30,18 @@ Table *create_table()
     // Perguntar ao usuário pelo número de colunas
     printf("Digite o número de colunas: ");
 
-    while (1) {
-        if (scanf("%d", &new_table->columns) == 1 && new_table->columns > 0) {
+    while (1)
+    {
+        if (scanf("%d", &new_table->columns) == 1 && new_table->columns > 0)
+        {
             // Entrada bem-sucedida, sair do loop
             break;
-        } else {
+        }
+        else
+        {
             // Limpar o buffer de entrada para evitar um loop infinito
-            while (getchar() != '\n');
+            while (getchar() != '\n')
+                ;
             // Solicitar ao usuário para inserir novamente
             printf("Entrada inválida. Digite o número de colunas novamente: ");
         }
@@ -198,17 +203,146 @@ Table *load_table(const char *filename)
     return loaded_table;
 }
 
-int main()
+void list_tables(const char *filename)
 {
-    Table *my_table = create_table();
-
-    if (!my_table)
+    FILE *file = fopen(filename, "r");
+    if (!file)
     {
-        fprintf(stderr, "Erro ao criar a tabela.\n");
-        return 1;
+        perror("Erro ao abrir o arquivo para leitura");
+        return;
     }
 
-    save_table(my_table, "table.csv");
+    char line[256]; // Ajuste o tamanho conforme necessário
+
+    printf("Tabelas cadastradas:\n");
+
+    // Lê cada linha do arquivo e imprime o nome da tabela
+    while (fgets(line, sizeof(line), file))
+    {
+        char table_name[50];                 // Ajuste o tamanho conforme necessário
+        sscanf(line, "%49[^,]", table_name); // Lê o nome da tabela até a primeira vírgula
+        printf("%s\n", table_name);
+    }
+
+    // Fechar o arquivo
+    fclose(file);
+}
+
+void delete_table(const char *table_name, const char *filename)
+{
+    FILE *file = fopen(filename, "r");
+    if (!file)
+    {
+        perror("Erro ao abrir o arquivo para leitura");
+        return;
+    }
+
+    // Criar um arquivo temporário
+    FILE *temp_file = fopen("temp_table.csv", "w");
+    if (!temp_file)
+    {
+        perror("Erro ao criar o arquivo temporário");
+        fclose(file);
+        return;
+    }
+
+    char line[256];
+    int table_deleted = 0;
+
+    // Ler e copiar as tabelas para o arquivo temporário
+    while (fgets(line, sizeof(line), file))
+    {
+        char table_name_in_file[50];
+        sscanf(line, "%49[^,],", table_name_in_file);
+
+        if (strcmp(table_name_in_file, table_name) != 0)
+        {
+            // A tabela não deve ser excluída, copiar para o arquivo temporário
+            fprintf(temp_file, "%s", line);
+        }
+        else
+        {
+            // A tabela foi excluída
+            table_deleted = 1;
+            printf("Tabela '%s' apagada com sucesso.\n", table_name);
+        }
+    }
+
+    fclose(file);
+    fclose(temp_file);
+
+    // Substituir o arquivo original pelo arquivo temporário
+    if (rename("temp_table.csv", filename) != 0)
+    {
+        perror("Erro ao substituir o arquivo original");
+    }
+
+    if (!table_deleted)
+    {
+        printf("A tabela '%s' não foi encontrada.\n", table_name);
+    }
+}
+
+int main()
+{
+    int choice;
+
+    // Loop principal do programa
+    while (1)
+    {
+        // Exibe o menu
+        printf("\nMenu:\n");
+        printf("1. Listar tabelas\n");
+        printf("2. Criar uma nova tabela\n");
+        printf("3. Deletar uma tabela\n");
+        printf("4. Sair\n");
+        printf("Escolha uma opção (1-4): ");
+
+        // Obtém a escolha do usuário
+        if (scanf("%d", &choice) != 1)
+        {
+            // Limpa o buffer de entrada em caso de entrada inválida
+            scanf("%*s");
+            printf("Opção inválida. Tente novamente.\n");
+            continue;
+        }
+
+        // Declaração da variável new_table aqui
+        Table *new_table;
+
+        // Executa a opção escolhida
+        switch (choice)
+        {
+        case 1:
+            // Listar tabelas
+            list_tables("table.csv");
+            break;
+        case 2:
+            // Criar uma nova tabela
+            new_table = create_table();
+            if (new_table)
+            {
+                // Salvar tabela no arquivo
+                save_table(new_table, "table.csv");
+                printf("Nova tabela criada e salva com sucesso.\n");
+            }
+            break;
+        case 3:
+            // Deletar uma tabela
+            printf("Digite o nome da tabela que deseja deletar: ");
+            char table_to_delete[50]; // Ajuste o tamanho conforme necessário
+            scanf("%s", table_to_delete);
+            delete_table(table_to_delete, "table.csv");
+            break;
+        case 4:
+            // Sair do programa
+            printf("Saindo do programa.\n");
+            exit(0);
+        default:
+            // Opção inválida
+            printf("Opção inválida. Tente novamente.\n");
+        }
+    }
 
     return 0;
 }
