@@ -2,6 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Estrutura da linha
+typedef struct Row
+{
+    char **values;
+    struct Row *next;
+} Row;
+
 // Estrutura tabela
 typedef struct
 {
@@ -9,7 +16,22 @@ typedef struct
     char *primary_key;
     int columns;
     char **column_names;
+    Row *rows;
 } Table;
+
+// Função auxiliar para liberar a memória alocada para uma linha
+void free_row(Row *row, int columns)
+{
+    if (row)
+    {
+        for (int i = 0; i < columns; ++i)
+        {
+            free(row->values[i]);
+        }
+        free(row->values);
+        free(row);
+    }
+}
 
 Table *create_table()
 {
@@ -106,6 +128,9 @@ Table *create_table()
         }
     }
 
+    // Inicializar a lista de linhas
+    new_table->rows = NULL;
+
     return new_table;
 }
 
@@ -130,26 +155,53 @@ void save_table(Table *table, const char *filename)
 
     // Fechar o arquivo
     fclose(file);
+
+    FILE *file_all = fopen("table.csv", "a");
+    if (!file_all)
+    {
+        perror("Erro ao abrir o arquivo para escrita");
+        return;
+    }
+
+     // Escrever os dados da tabela no arquivo em formato CSV
+    fprintf(file_all, "%s,%s,%d", table->name, table->primary_key, table->columns);
+
+    for (int i = 0; i < table->columns; ++i)
+    {
+        fprintf(file_all, ",%s", table->column_names[i]);
+    }
+
+    fprintf(file_all, "\n");
+
+        // Fechar o arquivo
+    fclose(file_all);
 }
 
+// Função para liberar a memória alocada para uma tabela
 void free_table(Table *table)
 {
-    // Libere a memória alocada para a tabela
     if (table)
     {
         free(table->name);
         free(table->primary_key);
-        for (int i = 0; i < table->columns; ++i)
-        {
-            free(table->column_names[i]);
-        }
         free(table->column_names);
+
+        // Liberar a memória alocada para as linhas
+        Row *current_row = table->rows;
+        while (current_row != NULL)
+        {
+            Row *next_row = current_row->next;
+            free_row(current_row, table->columns);
+            current_row = next_row;
+        }
+
         free(table);
     }
 }
 
 Table *load_table(const char *filename)
 {
+    printf("leu");
     FILE *file = fopen(filename, "r");
     if (!file)
     {
@@ -230,7 +282,7 @@ void list_tables(const char *filename)
 
 void delete_table(const char *table_name, const char *filename)
 {
-    FILE *file = fopen(filename, "r");
+    FILE *file = fopen("table.csv", "r");
     if (!file)
     {
         perror("Erro ao abrir o arquivo para leitura");
@@ -272,7 +324,7 @@ void delete_table(const char *table_name, const char *filename)
     fclose(temp_file);
 
     // Substituir o arquivo original pelo arquivo temporário
-    if (rename("temp_table.csv", filename) != 0)
+    if (rename("temp_table.csv", "table.csv") != 0)
     {
         perror("Erro ao substituir o arquivo original");
     }
@@ -281,6 +333,69 @@ void delete_table(const char *table_name, const char *filename)
     {
         printf("A tabela '%s' não foi encontrada.\n", table_name);
     }
+
+    // Use a função remove para apagar o arquivo
+    if (remove(filename) == 0) {
+        printf("Arquivo '%s' removido com sucesso.\n", filename);
+    } else {
+        perror("Erro ao remover o arquivo");
+    }
+
+}
+
+// Função para adicionar uma nova linha à tabela
+void add_row(Table *table)
+{
+    // Alocar memória para os valores das colunas
+    char **row_values = (char **)malloc(table->columns * sizeof(char *));
+    if (!row_values)
+    {
+        fprintf(stderr, "Erro na alocação de memória.\n");
+        return;
+    }
+
+    // Preencher os valores das colunas
+    for (int i = 0; i < table->columns; ++i)
+    {
+        printf("Digite o valor para %s: ", table->column_names[i]);
+        row_values[i] = (char *)malloc(50); // Ajuste o tamanho conforme necessário
+        scanf("%s", row_values[i]);
+    }
+
+    // Criar uma nova linha (Row) e configurar seus valores
+    Row *new_row = (Row *)malloc(sizeof(Row));
+    if (!new_row)
+    {
+        fprintf(stderr, "Erro na alocação de memória para a nova linha.\n");
+        for (int i = 0; i < table->columns; ++i)
+        {
+            free(row_values[i]);
+        }
+        free(row_values);
+        return;
+    }
+
+    new_row->values = row_values;
+
+    // Adicionar a nova linha à tabela
+    if (table->rows == NULL)
+    {
+        // Se a lista de linhas estiver vazia, a nova linha será a primeira
+        table->rows = new_row;
+    }
+    else
+    {
+        // Encontrar o final da lista de linhas e adicionar a nova linha
+        Row *last_row = table->rows;
+        while (last_row->next != NULL)
+        {
+            last_row = last_row->next;
+        }
+        last_row->next = new_row;
+    }
+
+    // Liberar a memória alocada para a nova linha
+    free_row(new_row, table->columns);
 }
 
 int main()
@@ -295,8 +410,9 @@ int main()
         printf("1. Listar tabelas\n");
         printf("2. Criar uma nova tabela\n");
         printf("3. Deletar uma tabela\n");
-        printf("4. Sair\n");
-        printf("Escolha uma opção (1-4): ");
+        printf("4. Adicionar linha a uma tabela\n"); // Nova opção para adicionar uma linha
+        printf("5. Sair\n");
+        printf("Escolha uma opção (1-5): ");
 
         // Obtém a escolha do usuário
         if (scanf("%d", &choice) != 1)
@@ -323,21 +439,35 @@ int main()
             if (new_table)
             {
                 // Salvar tabela no arquivo
-                save_table(new_table, "table.csv");
+                save_table(new_table, strcat(new_table->name, ".csv"));
                 printf("Nova tabela criada e salva com sucesso.\n");
             }
             break;
         case 3:
             // Deletar uma tabela
             printf("Digite o nome da tabela que deseja deletar: ");
-            char table_to_delete[50]; // Ajuste o tamanho conforme necessário
+            char table_to_delete[50];
             scanf("%s", table_to_delete);
-            delete_table(table_to_delete, "table.csv");
+            delete_table(table_to_delete, strcat(table_to_delete, ".csv"));
             break;
         case 4:
-            // Sair do programa
-            printf("Saindo do programa.\n");
-            exit(0);
+            // Adicionar linha a uma tabela
+            printf("Digite o nome da tabela à qual deseja adicionar uma linha: ");
+            char table_name_to_add_row[50];
+            scanf("%s", table_name_to_add_row);
+
+            // Carregar a tabela
+            Table *table_to_add_row = load_table(table_name_to_add_row);
+            if (table_to_add_row)
+            {
+                // Adicionar a linha à tabela
+                add_row(table_to_add_row);
+                // Salvar a tabela de volta ao arquivo
+                save_table(table_to_add_row, strcat(table_to_add_row->name, ".csv"));
+                // Liberar a memória alocada para a tabela
+                free_table(table_to_add_row);
+            }
+            break;
         default:
             // Opção inválida
             printf("Opção inválida. Tente novamente.\n");
